@@ -1,6 +1,7 @@
 local ffi = require "ffi"
 local ffi_load = ffi.load
 local ffi_new = ffi.new
+local ffi_string = ffi.string
 local ok, sf = pcall(ffi_load, "snowflake")
 assert(ok, sf)
 
@@ -15,15 +16,15 @@ ffi.cdef[[
     }snowflake_t;
 
     bool snowflake_init(snowflake_t*, int, int);
-    bool snowflake_next_id(snowflake_t*,int64_t*);
+    bool snowflake_next_id(snowflake_t*, char*, size_t);
 ]]
 
 local _M = {_VERSION = '0.0.1'}
 local mt = { __index = _M }
 
 function _M.new(self, worker_id, datacenter_id)
-    assert(worker_id >= 0 and worker_id < 0x1f)
-    assert(datacenter_id >= 0 and datacenter_id < 0x1f)
+    assert(worker_id >= 0 and worker_id <= 0x1f)
+    assert(datacenter_id >= 0 and datacenter_id <= 0x1f)
 
     local snowflake = ffi_new("snowflake_t")
     local flag = sf.snowflake_init(snowflake, worker_id, datacenter_id)
@@ -38,11 +39,14 @@ function _M.new(self, worker_id, datacenter_id)
 end
 
 function _M.next_id(self)
-    local id = ffi_new("int64_t[1]")
-    local ok = sf.snowflake_next_id(self.context, id)
+    --local id = ffi_new("int64_t[1]")
+    --local ok = sf.snowflake_next_id(self.context, id)
+    local id_buf = ffi_new("char[21]")
+    local ok = sf.snowflake_next_id(self.context, id_buf, 21)
     assert(ok)
 
-    return id[0]
+    return ffi_string(id_buf)
+    --return id[0]
 end
 
 return _M
