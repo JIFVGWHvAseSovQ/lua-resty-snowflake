@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stddef.h>
+#include <string.h>
 
 
 /**
@@ -74,21 +75,18 @@ bool snowflake_init(snowflake_t* context,int worker_id, int datacenter_id) {
     return true;
 }
 
-bool snowflake_next_id(snowflake_t* context, int64_t* id) {
+bool snowflake_next_id(snowflake_t* context, char* id_str, size_t str_size) {
     int64_t ts;
-    if(context == NULL) {
-        //printf("context is null\n");
+    if(context == NULL || id_str == NULL || str_size < 21) {
         return false;
     }
 
     if (!context->initialized) {
-        //printf("initialized is error\n");
         return false;
     }
 
     ts = time_gen();
     if (ts < context->last_timestamp) {
-        //printf("ts error\n");
         return false;
     }
 
@@ -107,12 +105,8 @@ bool snowflake_next_id(snowflake_t* context, int64_t* id) {
             (context->worker_id << WORKER_ID_SHIFT) | 
             context->sequence;
 
-    //printf("ts:%ld\n", time_gen());
-    //printf("epoc:%lld\n", SNOWFLAKE_EPOC);
-    //printf("sequence:%d\n", context->sequence);
-    //printf("%llx\n", ts);
-    //printf("%lld\n", ts);
-    *id = ts;
+    // 将int64_t转换为字符串
+    snprintf(id_str, str_size, "%lld", ts);
 
     return true;
 }
