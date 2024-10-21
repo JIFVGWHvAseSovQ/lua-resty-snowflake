@@ -87,12 +87,14 @@ bool snowflake_next_id(snowflake_t* context, char* id_str, size_t str_size) {
 
     ts = time_gen();
     if (ts < context->last_timestamp) {
+        // Clock moved backwards. Reject requests until clock catches up.
         return false;
     }
 
     if (context->last_timestamp == ts) {
         context->sequence = (context->sequence + 1) & SEQUENCE_MASK;
         if (context->sequence == 0) {
+            // Sequence exhausted, wait till next millisecond.
             ts = til_next_millis(context->last_timestamp);
         }
     } else {
@@ -100,13 +102,13 @@ bool snowflake_next_id(snowflake_t* context, char* id_str, size_t str_size) {
     }
 
     context->last_timestamp = ts;
-    ts = ((ts - SNOWFLAKE_EPOC) << TIMESTAMP_SHIFT) |
+    int64_t id = ((ts - SNOWFLAKE_EPOC) << TIMESTAMP_SHIFT) |
             (context->datacenter_id << DATACENTER_ID_SHIFT) |
             (context->worker_id << WORKER_ID_SHIFT) | 
             context->sequence;
 
     // 将int64_t转换为字符串
-    snprintf(id_str, str_size, "%lld", ts);
+    snprintf(id_str, str_size, "%lld", id);
 
     return true;
 }
