@@ -2,8 +2,10 @@ local ffi = require "ffi"
 local ffi_load = ffi.load
 local ffi_new = ffi.new
 local ffi_string = ffi.string
+local semaphore = require("ngx.semaphore")
 local ok, sf = pcall(ffi_load, "snowflake")
 assert(ok, sf)
+local lock = semaphore.new(20)
 
 ffi.cdef[[
     typedef struct snowflake{
@@ -39,11 +41,13 @@ function _M.new(self, worker_id, datacenter_id)
 end
 
 function _M.next_id(self)
+    lock:wait(0)
     --local id = ffi_new("int64_t[1]")
     --local ok = sf.snowflake_next_id(self.context, id)
     local id_buf = ffi_new("char[21]")
     local ok = sf.snowflake_next_id(self.context, id_buf, 21)
     assert(ok)
+    lock:post()
 
     return ffi_string(id_buf)
     --return id[0]
