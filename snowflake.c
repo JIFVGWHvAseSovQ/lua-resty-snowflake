@@ -43,17 +43,23 @@ typedef struct snowflake {
 
 // Thread-local storage for the snowflake context
 static __thread snowflake_t* tls_snowflake = NULL;
+static pthread_key_t snowflake_key;
 
 // Function to clean up the thread-local snowflake context
-static void cleanup_tls_snowflake(void* arg) {
-    (void)arg; // Unused parameter
-    if (tls_snowflake) {
-        if (tls_snowflake->initialized) {
-            pthread_mutex_destroy(&tls_snowflake->lock);
+static void cleanup_snowflake(void* arg) {
+    snowflake_t* sf = (snowflake_t*)arg;
+    if (sf) {
+        if (sf->initialized) {
+            pthread_mutex_destroy(&sf->lock);
         }
-        free(tls_snowflake);
-        tls_snowflake = NULL;
+        free(sf);
     }
+}
+
+static void thread_exit_handler(void* arg) {
+    (void)arg;
+    cleanup_snowflake(tls_snowflake);
+    tls_snowflake = NULL;
 }
 
 static int64_t time_gen() {
@@ -64,16 +70,22 @@ static int64_t time_gen() {
 
 static int64_t til_next_millis(int64_t last_timestamp) {
     int64_t ts = time_gen();
-    while (ts < last_timestamp) {
+    while (ts <= last_timestamp) {
         ts = time_gen();
     }
-
     return ts;
+}
+
+__attribute__((constructor)) void snowflake_init_once() {
+    pthread_key_create(&snowflake_key, thread_exit_handler);
+}
+
+__attribute__((destructor)) void snowflake_cleanup_once() {
+    pthread_key_delete(snowflake_key);
 }
 
 bool snowflake_init(int worker_id, int datacenter_id) {
     if (tls_snowflake != NULL) {
-        // Already initialized for this thread
         return false;
     }
 
@@ -94,7 +106,7 @@ bool snowflake_init(int worker_id, int datacenter_id) {
     tls_snowflake->datacenter_id = datacenter_id;
     tls_snowflake->sequence = 0;
     tls_snowflake->last_timestamp = -1;
-    tls_snowflake->initialized = true;
+    tls_snowflake->initialized = false;
 
     if (pthread_mutex_init(&tls_snowflake->lock, NULL) != 0) {
         free(tls_snowflake);
@@ -102,8 +114,8 @@ bool snowflake_init(int worker_id, int datacenter_id) {
         return false;
     }
 
-    // Register the cleanup function
-    pthread_cleanup_push(cleanup_tls_snowflake, NULL);
+    tls_snowflake->initialized = true;
+    pthread_setspecific(snowflake_key, tls_snowflake);
 
     return true;
 }
