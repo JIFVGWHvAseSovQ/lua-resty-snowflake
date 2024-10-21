@@ -6,20 +6,11 @@ local ok, sf = pcall(ffi_load, "snowflake")
 assert(ok, sf)
 
 ffi.cdef[[
-    typedef struct snowflake{
-     
-        int worker_id;
-        int datacenter_id;
-        int sequence;
-        int64_t last_timestamp;
-        bool initialized;
-    }snowflake_t;
-
     bool snowflake_init(int, int);
     bool snowflake_next_id(char*, size_t);
 ]]
 
-local _M = {_VERSION = '0.0.1'}
+local _M = {_VERSION = '0.0.2'}
 local mt = { __index = _M }
 
 function _M.new(self, worker_id, datacenter_id)
@@ -32,18 +23,15 @@ function _M.new(self, worker_id, datacenter_id)
     end
 
     return setmetatable({}, mt)
-
 end
 
 function _M.next_id(self)
-    --local id = ffi_new("int64_t[1]")
-    --local ok = sf.snowflake_next_id(self.context, id)
     local id_buf = ffi_new("char[21]")
     local ok = sf.snowflake_next_id(id_buf, 21)
     assert(ok)
 
     return ffi_string(id_buf)
-    --return id[0]
 end
 
 return _M
+
