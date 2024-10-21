@@ -1,6 +1,7 @@
 local ffi = require "ffi"
 local ffi_load = ffi.load
 local ffi_new = ffi.new
+local ffi_string = ffi.string
 local ok, sf = pcall(ffi_load, "snowflake")
 assert(ok, sf)
 
@@ -44,7 +45,7 @@ function _M.next_id(self)
     local ok = sf.snowflake_next_id(self.context, id_buf, 21)
     assert(ok)
 
-    return id_buf
+    return ffi_string(id_buf)
     --return id[0]
 end
 
