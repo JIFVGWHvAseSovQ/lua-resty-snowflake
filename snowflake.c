@@ -1,3 +1,9 @@
+/**
+ * original version(scala):
+ * https://github.com/twitter-archive/snowflake/blob/snowflake-2010/src/main/scala/com/twitter/service/snowflake/IdWorker.scala
+ * @author KingkongWang
+ */
+
 #include <stdbool.h>
 #include <sys/time.h>
 #include <stdint.h>
@@ -7,7 +13,24 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-// ... (previous #define statements remain unchanged)
+
+/**
+ * 2019-01-01T00:00:00Z
+ */
+#define SNOWFLAKE_EPOC 1546272000000L 
+
+#define WORKER_ID_BITS 5
+#define DATACENTER_ID_BITS 5
+#define MAX_WORKER_ID (-1L ^ (-1L << WORKER_ID_BITS))
+#define MAX_DATACENTER_ID (-1L ^ (-1L << DATACENTER_ID_BITS))
+#define SEQUENCE_BITS 12
+
+
+#define WORKER_ID_SHIFT SEQUENCE_BITS
+#define DATACENTER_ID_SHIFT (SEQUENCE_BITS + WORKER_ID_BITS)
+#define TIMESTAMP_SHIFT (DATACENTER_ID_SHIFT + DATACENTER_ID_BITS)
+#define SEQUENCE_MASK (-1L ^ (-1L << SEQUENCE_BITS))
+
 
 typedef struct snowflake {
     int worker_id;
@@ -33,7 +56,20 @@ static void cleanup_tls_snowflake(void* arg) {
     }
 }
 
-// ... (previous static functions time_gen and til_next_millis remain unchanged)
+static int64_t time_gen() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
+static int64_t til_next_millis(int64_t last_timestamp) {
+    int64_t ts = time_gen();
+    while (ts < last_timestamp) {
+        ts = time_gen();
+    }
+
+    return ts;
+}
 
 bool snowflake_init(int worker_id, int datacenter_id) {
     if (tls_snowflake != NULL) {
@@ -110,10 +146,4 @@ bool snowflake_next_id(char* id_str, size_t str_size) {
     snprintf(id_str, str_size, "%lld", ts);
 
     return true;
-}
-
-// Optional: Explicit cleanup function if needed
-void snowflake_cleanup(void) {
-    cleanup_tls_snowflake(NULL);
-    pthread_cleanup_pop(0);
 }
