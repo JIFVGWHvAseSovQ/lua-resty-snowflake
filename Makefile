@@ -10,7 +10,7 @@ TARGET = libsnowflake.so
 all: $(TARGET)
 
 $(TARGET): snowflake.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 install:
 	install -d $(DESTDIR)$(PREFIX)
