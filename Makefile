@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -g -fPIC -Wall
 LDFLAGS = -shared
 
-PREFIX = /usr/local/lfs
+PREFIX = /usr/local/lib
 TARGET = libsnowflake.so
 
 .PHONY: all clean install uninstall
