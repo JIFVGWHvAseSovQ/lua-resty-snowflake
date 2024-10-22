@@ -25,10 +25,12 @@ local mt = { __index = _M }
 function _M.new(self, worker_id, datacenter_id)
     -- 改用 pcall 来捕获断言错误
     local ok, err = pcall(function()
-        assert(worker_id >= 0 and worker_id <= 0x1f),
-            string.format("worker_id must be between 0 and %d", 0x1f))
-        assert(datacenter_id >= 0 and datacenter_id <= 0x1f),
-            string.format("datacenter_id must be between 0 and %d", 0x1f))
+        assert(worker_id >= 0 and worker_id <= 0x1f,
+            string.format("worker_id must be between 0 and %d", 0x1f)
+        )
+        assert(datacenter_id >= 0 and datacenter_id <= 0x1f,
+            string.format("datacenter_id must be between 0 and %d", 0x1f)
+        )
     end)
     if not ok then
         return nil, err
