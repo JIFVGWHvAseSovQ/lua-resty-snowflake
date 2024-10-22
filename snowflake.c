@@ -14,8 +14,10 @@
 
 /**
  * 2019-01-01T00:00:00Z
+ * #define SNOWFLAKE_EPOC 1546272000000L
+ * 2024-10-01 00:00:00 UTC
  */
-#define SNOWFLAKE_EPOC 1546272000000L 
+#define SNOWFLAKE_EPOC 1696118400000L
 
 #define WORKER_ID_BITS 5
 #define DATACENTER_ID_BITS 5
@@ -54,14 +56,17 @@ static int64_t til_next_millis(int64_t last_timestamp) {
 
 bool snowflake_init(snowflake_t* context,int worker_id, int datacenter_id) {
     if(context == NULL) {
+        fprintf(stderr, "Error: context is NULL\n");
         return false;
     }
 
     if (worker_id > MAX_WORKER_ID || worker_id < 0) {
+        fprintf(stderr, "Error: worker Id can't be greater than %ld or less than 0\n", MAX_WORKER_ID);
         return false;
     }
 
     if (datacenter_id > MAX_DATACENTER_ID || datacenter_id < 0) {
+        fprintf(stderr, "Error: datacenter Id can't be greater than %ld or less than 0\n", MAX_DATACENTER_ID);
         return false;
     }
     
@@ -78,23 +83,24 @@ bool snowflake_init(snowflake_t* context,int worker_id, int datacenter_id) {
 bool snowflake_next_id(snowflake_t* context, char* id_str, size_t str_size) {
     int64_t ts;
     if(context == NULL || id_str == NULL || str_size < 21) {
+        fprintf(stderr, "Error: invalid parameters\n");
         return false;
     }
 
     if (!context->initialized) {
+        fprintf(stderr, "Error: snowflake not initialized\n");
         return false;
     }
 
     ts = time_gen();
     if (ts < context->last_timestamp) {
-        // Clock moved backwards. Reject requests until clock catches up.
+        fprintf(stderr, "Error: clock moved backwards\n");
         return false;
     }
 
     if (context->last_timestamp == ts) {
         context->sequence = (context->sequence + 1) & SEQUENCE_MASK;
         if (context->sequence == 0) {
-            // Sequence exhausted, wait till next millisecond.
             ts = til_next_millis(context->last_timestamp);
         }
     } else {
@@ -102,13 +108,13 @@ bool snowflake_next_id(snowflake_t* context, char* id_str, size_t str_size) {
     }
 
     context->last_timestamp = ts;
-    int64_t id = ((ts - SNOWFLAKE_EPOC) << TIMESTAMP_SHIFT) |
+    ts = ((ts - SNOWFLAKE_EPOC) << TIMESTAMP_SHIFT) |
             (context->datacenter_id << DATACENTER_ID_SHIFT) |
             (context->worker_id << WORKER_ID_SHIFT) | 
             context->sequence;
 
     // 将int64_t转换为字符串
-    snprintf(id_str, str_size, "%lld", id);
+    snprintf(id_str, str_size, "%lld", ts);
 
     return true;
 }
