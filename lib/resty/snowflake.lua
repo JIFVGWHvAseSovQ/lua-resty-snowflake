@@ -53,7 +53,7 @@ function _M.next_id(self)
     --local ok = sf.snowflake_next_id(self.context, id)
     local id_buf = ffi_new("char[21]")
     local ok = sf.snowflake_next_id(self.context, id_buf, 21)
-    assert(ok)
+    assert(ok, "failed to generate next id")
 
     return ffi_string(id_buf)
     --return id[0]
