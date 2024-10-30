@@ -26,7 +26,7 @@ ffi.cdef[[
 local _M = {_VERSION = '0.0.1'}
 local mt = { __index = _M }
 
-function _M.new(self, worker_id, datacenter_id)
+local function new(self, worker_id, datacenter_id)
     -- 改用 pcall 来捕获断言错误
     local ok, err = pcall(function()
         assert(worker_id >= 0 and worker_id <= 0x1f,
@@ -54,7 +54,7 @@ function _M.new(self, worker_id, datacenter_id)
 
 end
 
-function _M.next_id(self)
+local function next_id(self)
     --local id = ffi_new("int64_t[1]")
     --local ok = sf.snowflake_next_id(self.context, id)
     local id_buf = ffi_new("char[21]")
@@ -67,6 +67,15 @@ function _M.next_id(self)
 
     return ffi_string(id_buf)
     --return id[0]
+end
+
+function _M.id(worker_id, datacenter_id)
+    local sf, err = new(worker_id, datacenter_id)
+    if not sf then
+        ngx.log(ngx.ERR, ("Failed to create snowflake: %s."):format(err))
+        return
+    end
+    return sf:next_id()
 end
 
 return _M
