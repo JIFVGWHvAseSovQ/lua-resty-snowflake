@@ -2,9 +2,9 @@ local ffi = require("ffi")
 local ffi_new = ffi.new
 local ffi_load = ffi.load
 local ffi_string = ffi.string
-local sf_ok, sf = pcall(ffi_load, "snowflake")
-local sf_status, err = assert(sf_ok, string.format("Failed to load the Snowflake C library, error: %s.", sf))
-if not sf_status then
+local ok, sf = pcall(ffi_load, "snowflake")
+if not ok then
+    local err = string.format("Failed to load the Snowflake C library, error: %s.", sf)
     ngx.log(ngx.ERR, err)
     return nil, err
 end
