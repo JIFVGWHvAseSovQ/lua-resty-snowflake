@@ -3,7 +3,7 @@ CFLAGS = -g -fPIC -Wall
 LDFLAGS = -shared
 
 PREFIX = /usr/local/lib
-TARGET = libsnowflake.so
+TARGET = snowflake.so
 
 .PHONY: all clean install uninstall
 
