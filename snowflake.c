@@ -6,14 +6,15 @@
 
 #include <luajit-2.1/lua.h>
 #include <luajit-2.1/lauxlib.h>
+#include <luajit-2.1/lualib.h>
 #include <stdbool.h>
 #include <sys/time.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <string.h>
+#include <stdlib.h>
 #include <pthread.h>
-#include <errno.h>
-
 
 /**
  * 2019-01-01T00:00:00Z
@@ -35,13 +36,13 @@
 #define TIMESTAMP_SHIFT (DATACENTER_ID_SHIFT + DATACENTER_ID_BITS)
 #define SEQUENCE_MASK (-1L ^ (-1L << SEQUENCE_BITS))
 
-typedef struct {
+typedef struct snowflake {
     int worker_id;
     int datacenter_id;
     int sequence;
     int64_t last_timestamp;
-    pthread_mutex_t lock;
     bool initialized;
+    pthread_mutex_t mutex;  // 添加互斥锁
 } snowflake_t;
 
 static int64_t time_gen() {
@@ -55,165 +56,159 @@ static int64_t til_next_millis(int64_t last_timestamp) {
     while (ts < last_timestamp) {
         ts = time_gen();
     }
-
     return ts;
 }
 
-// snowflake对象的ID生成方法
-static int64_t generate_id(snowflake_t *sf) {
-    int64_t id = -1;
-    int lock_result;
-
-    if (!sf->initialized) {
-        return -1;
+// 初始化 Snowflake 实例（增加互斥锁初始化）
+static bool snowflake_init(snowflake_t* context, int worker_id, int datacenter_id) {
+    if(context == NULL) {
+        return false;
     }
 
-    lock_result = pthread_mutex_lock(&sf->lock);
-    if (lock_result != 0) {
-        return -1;
-    }
-
-    int64_t ts = time_gen();
-    
-    if (ts < sf->last_timestamp) {
-        pthread_mutex_unlock(&sf->lock);
-        return -1;  // 时钟回拨，返回错误
-    }
-
-    if (sf->last_timestamp == ts) {
-        sf->sequence = (sf->sequence + 1) & SEQUENCE_MASK;
-        if (sf->sequence == 0) {
-            ts = til_next_millis(sf->last_timestamp);
-        }
-    } else {
-        sf->sequence = 0;
-    }
-
-    sf->last_timestamp = ts;
-    
-    id = ((ts - SNOWFLAKE_EPOC) << TIMESTAMP_SHIFT) |
-         (sf->datacenter_id << DATACENTER_ID_SHIFT) |
-         (sf->worker_id << WORKER_ID_SHIFT) | 
-         sf->sequence;
-
-    pthread_mutex_unlock(&sf->lock);
-    
-    return id;
-}
-
-// Lua对象方法：生成ID
-static int l_snowflake_id(lua_State *L) {
-    snowflake_t *sf = (snowflake_t *)luaL_checkudata(L, 1, "snowflake.generator");
-    
-    int64_t id = generate_id(sf);
-    if (id == -1) {
-        lua_pushnil(L);
-        lua_pushstring(L, "Failed to generate ID");
-        return 2;
-    }
-    
-    char id_str[21];
-    snprintf(id_str, sizeof(id_str), "%lld", id);
-    lua_pushstring(L, id_str);
-    return 1;
-}
-
-// Lua对象的垃圾回收函数
-static int l_snowflake_gc(lua_State *L) {
-    snowflake_t *sf = (snowflake_t *)luaL_checkudata(L, 1, "snowflake.generator");
-    if (sf->initialized) {
-        pthread_mutex_destroy(&sf->lock);
-        sf->initialized = false;
-    }
-    return 0;
-}
-
-// 初始化函数
-static int l_snowflake_init(lua_State *L) {
-    int worker_id = luaL_checkinteger(L, 1);
-    int datacenter_id = luaL_checkinteger(L, 2);
-    
-    // 验证参数
     if (worker_id > MAX_WORKER_ID || worker_id < 0) {
-        lua_pushnil(L);
-        lua_pushstring(L, "Invalid worker_id");
-        return 2;
+        return false;
     }
 
     if (datacenter_id > MAX_DATACENTER_ID || datacenter_id < 0) {
-        lua_pushnil(L);
-        lua_pushstring(L, "Invalid datacenter_id");
-        return 2;
+        return false;
     }
-    
-    // 创建snowflake实例
-    snowflake_t *sf = (snowflake_t *)lua_newuserdata(L, sizeof(snowflake_t));
-    memset(sf, 0, sizeof(snowflake_t));
     
     // 初始化互斥锁
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
-    
-    if (pthread_mutex_init(&sf->lock, &attr) != 0) {
-        pthread_mutexattr_destroy(&attr);
-        lua_pushnil(L);
-        lua_pushstring(L, "Failed to initialize mutex");
-        return 2;
+    if (pthread_mutex_init(&context->mutex, NULL) != 0) {
+        return false;
     }
     
-    pthread_mutexattr_destroy(&attr);
+    context->worker_id = worker_id;
+    context->datacenter_id = datacenter_id;
+    context->sequence = 0;
+    context->last_timestamp = -1;
+    context->initialized = true;
+
+    return true;
+}
+
+// 线程安全的 ID 生成函数
+static bool snowflake_next_id(snowflake_t* context, char* id_str, size_t str_size) {
+    if(context == NULL || id_str == NULL || str_size < 21) {
+        return false;
+    }
+
+    // 加锁
+    pthread_mutex_lock(&context->mutex);
+
+    if (!context->initialized) {
+        pthread_mutex_unlock(&context->mutex);
+        return false;
+    }
+
+    int64_t ts = time_gen();
+    if (ts < context->last_timestamp) {
+        pthread_mutex_unlock(&context->mutex);
+        return false;
+    }
+
+    if (context->last_timestamp == ts) {
+        context->sequence = (context->sequence + 1) & SEQUENCE_MASK;
+        if (context->sequence == 0) {
+            ts = til_next_millis(context->last_timestamp);
+        }
+    } else {
+        context->sequence = 0;
+    }
+
+    context->last_timestamp = ts;
+    int64_t id = ((ts - SNOWFLAKE_EPOC) << TIMESTAMP_SHIFT) |
+            (context->datacenter_id << DATACENTER_ID_SHIFT) |
+            (context->worker_id << WORKER_ID_SHIFT) | 
+            context->sequence;
+
+    // 生成 ID 后立即解锁
+    snprintf(id_str, str_size, "%lld", id);
+    pthread_mutex_unlock(&context->mutex);
+
+    return true;
+}
+
+// 资源清理函数（增加互斥锁销毁）
+static void snowflake_destroy(snowflake_t* context) {
+    if (context != NULL) {
+        pthread_mutex_destroy(&context->mutex);
+    }
+}
+
+// Lua 绑定函数：创建 Snowflake 实例
+static int lua_snowflake_new(lua_State* L) {
+    // 检查参数个数和类型
+    luaL_checktype(L, 1, LUA_TNUMBER);  // worker_id
+    luaL_checktype(L, 2, LUA_TNUMBER);  // datacenter_id
     
-    // 初始化其他字段
-    sf->worker_id = worker_id;
-    sf->datacenter_id = datacenter_id;
-    sf->sequence = 0;
-    sf->last_timestamp = -1;
-    sf->initialized = true;
+    int worker_id = lua_tonumber(L, 1);
+    int datacenter_id = lua_tonumber(L, 2);
+
+    // 参数验证
+    if (worker_id < 0 || worker_id > MAX_WORKER_ID || 
+        datacenter_id < 0 || datacenter_id > MAX_DATACENTER_ID) {
+        return luaL_error(L, "worker_id and datacenter_id must be between 0 and 31");
+    }
+
+    // 分配 Snowflake 实例
+    snowflake_t* context = (snowflake_t*)lua_newuserdata(L, sizeof(snowflake_t));
     
+    // 初始化实例
+    if (!snowflake_init(context, worker_id, datacenter_id)) {
+        return luaL_error(L, "Failed to initialize snowflake");
+    }
+
     // 设置元表
-    luaL_getmetatable(L, "snowflake.generator");
+    luaL_getmetatable(L, "snowflake_mt");
     lua_setmetatable(L, -2);
-    
+
     return 1;
 }
 
-// 注册snowflake对象的元表
-static void register_snowflake_generator(lua_State *L) {
-    // 创建元表
-    luaL_newmetatable(L, "snowflake.generator");
+// Lua 绑定函数：生成下一个 ID
+static int lua_snowflake_next_id(lua_State* L) {
+    snowflake_t* context = (snowflake_t*)luaL_checkudata(L, 1, "snowflake_mt");
     
-    // 设置__gc方法
-    lua_pushstring(L, "__gc");
-    lua_pushcfunction(L, l_snowflake_gc);
-    lua_settable(L, -3);
+    char id_str[21];
+    if (snowflake_next_id(context, id_str, sizeof(id_str))) {
+        lua_pushstring(L, id_str);
+        return 1;
+    }
     
-    // 创建方法表
-    lua_newtable(L);
-    
-    lua_pushstring(L, "id");
-    lua_pushcfunction(L, l_snowflake_id);
-    lua_settable(L, -3);
-    
-    // 设置方法表为__index
-    lua_setfield(L, -2, "__index");
-    
-    // 弹出元表
-    lua_pop(L, 1);
+    return luaL_error(L, "Failed to generate next id");
 }
 
-// Lua模块注册
-static const struct luaL_Reg snowflake[] = {
-    {"init", l_snowflake_init},
-    {NULL, NULL}
-};
+// Lua 绑定函数：销毁 Snowflake 实例
+static int lua_snowflake_destroy(lua_State* L) {
+    snowflake_t* context = (snowflake_t*)luaL_checkudata(L, 1, "snowflake_mt");
+    snowflake_destroy(context);
+    return 0;
+}
 
-// 模块初始化函数
-int luaopen_snowflake(lua_State *L) {
-    // 注册snowflake生成器类型
-    register_snowflake_generator(L);
+// 模块加载函数
+int luaopen_snowflake(lua_State* L) {
+    // 创建元表
+    luaL_newmetatable(L, "snowflake_mt");
     
+    // 设置元表的 __index 方法
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -2, "__index");
+
+    // 注册方法
+    lua_pushcfunction(L, lua_snowflake_next_id);
+    lua_setfield(L, -2, "next_id");
+
+    // 注册析构函数（可选）
+    lua_pushcfunction(L, lua_snowflake_destroy);
+    lua_setfield(L, -2, "__gc");
+
     // 创建模块表
-    luaL_newlib(L, snowflake);
+    lua_createtable(L, 0, 1);
+    
+    // 注册 new 函数
+    lua_pushcfunction(L, lua_snowflake_new);
+    lua_setfield(L, -2, "new");
+
     return 1;
 }
