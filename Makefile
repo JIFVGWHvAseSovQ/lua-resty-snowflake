@@ -1,8 +1,11 @@
-CC = gcc
-CFLAGS = -g -fPIC -Wall
-LDFLAGS = -shared
-
 PREFIX = /usr/local/lib
+LUAJIT_LIB ?= /usr/local/lib
+LUAJIT_INC ?= /usr/local/include/luajit-2.1
+
+CC = gcc
+CFLAGS = -Wall -Wextra -fPIC -g -O2  -I$(LUAJIT_INC)
+LDFLAGS = -L$(LUAJIT_LIB) -shared -lluajit-5.1
+
 TARGET = snowflake.so
 
 .PHONY: all clean install uninstall
