@@ -3,7 +3,7 @@ LUAJIT_LIB ?= /usr/local/lib
 LUAJIT_INC ?= /usr/local/include/luajit-2.1
 
 CC = gcc
-CFLAGS = -Wall -Wextra -fPIC -g -O2  -I$(LUAJIT_INC)
+CFLAGS = -Wall -Wextra -std=c11 -fPIC -g -O2  -I$(LUAJIT_INC)
 LDFLAGS = -L$(LUAJIT_LIB) -shared -lluajit-5.1
 
 TARGET = snowflake.so
