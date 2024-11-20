@@ -63,8 +63,8 @@ typedef struct {
 } spin_lock_t;
 
 typedef struct snowflake {
-    int64_t worker_id;
-    int64_t datacenter_id;
+    uint64_t worker_id;
+    uint64_t datacenter_id;
     atomic_int_least64_t sequence;
     atomic_int_least64_t last_timestamp;
     atomic_int_least64_t backward_sequence;  // 时钟回拨补偿序列
@@ -119,17 +119,17 @@ static snowflake_error_t snowflake_init(snowflake_t* context, int worker_id, int
         return SNOWFLAKE_ERROR_INVALID_PARAMS;
     }
 
-    if (worker_id > MAX_WORKER_ID || worker_id < 0) {
+    if (worker_id < 0 || (uint64_t)worker_id > MAX_WORKER_ID) {
         return SNOWFLAKE_ERROR_INVALID_PARAMS;
     }
 
-    if (datacenter_id > MAX_DATACENTER_ID || datacenter_id < 0) {
+    if (datacenter_id < 0 || (uint64_t)datacenter_id > MAX_DATACENTER_ID) {
         return SNOWFLAKE_ERROR_INVALID_PARAMS;
     }
     
     spin_lock_init(&context->lock);
-    context->worker_id = worker_id;
-    context->datacenter_id = datacenter_id;
+    context->worker_id = (uint64_t)worker_id;
+    context->datacenter_id = (uint64_t)datacenter_id;
     atomic_init(&context->sequence, INITIAL_SEQUENCE);
     atomic_init(&context->last_timestamp, -1);
     atomic_init(&context->backward_sequence, INITIAL_SEQUENCE);
@@ -165,7 +165,7 @@ static snowflake_error_t snowflake_next_id_with_retry(snowflake_t* context, char
     for (int retry = 0; retry < MAX_RETRY_COUNT; retry++) {
         int64_t current_timestamp = time_gen();
         int64_t last_timestamp;
-        int sequence;
+        int sequence = 0;
         bool need_wait = false;
         snowflake_error_t error;
 
