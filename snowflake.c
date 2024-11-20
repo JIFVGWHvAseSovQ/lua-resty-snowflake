@@ -4,6 +4,7 @@
  * @author KingkongWang
  */
 
+#define _GNU_SOURCE  // 添加这行以支持 clock_gettime
 #include <luajit-2.1/lua.h>
 #include <luajit-2.1/lualib.h>
 #include <luajit-2.1/lauxlib.h>
@@ -18,7 +19,6 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include <stdatomic.h>
-#define _GNU_SOURCE  // 添加这行以支持 clock_gettime
 
 /**
  * 2019-01-01T00:00:00Z
@@ -30,15 +30,16 @@
 
 #define WORKER_ID_BITS 5L
 #define DATACENTER_ID_BITS 5L
-#define MAX_WORKER_ID (-1L ^ (-1L << WORKER_ID_BITS))
-#define MAX_DATACENTER_ID (-1L ^ (-1L << DATACENTER_ID_BITS))
+// Fixed the negative shift warnings by using unsigned long
+#define MAX_WORKER_ID ((1UL << WORKER_ID_BITS) - 1)
+#define MAX_DATACENTER_ID ((1UL << DATACENTER_ID_BITS) - 1)
 #define SEQUENCE_BITS 12L
 
 
 #define WORKER_ID_SHIFT SEQUENCE_BITS
 #define DATACENTER_ID_SHIFT (SEQUENCE_BITS + WORKER_ID_BITS)
 #define TIMESTAMP_SHIFT (DATACENTER_ID_SHIFT + DATACENTER_ID_BITS)
-#define SEQUENCE_MASK (-1L ^ (-1L << SEQUENCE_BITS))
+#define SEQUENCE_MASK ((1UL << SEQUENCE_BITS) - 1)
 
 #define MAX_SEQUENCE 4095
 #define MAX_RETRY_COUNT 3
