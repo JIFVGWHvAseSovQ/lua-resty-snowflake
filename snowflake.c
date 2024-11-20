@@ -7,6 +7,7 @@
 #include <luajit-2.1/lua.h>
 #include <luajit-2.1/lualib.h>
 #include <luajit-2.1/lauxlib.h>
+#include <time.h>    // 添加此头文件支持 clock_gettime 和 CLOCK_REALTIME
 #include <sched.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -17,6 +18,7 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include <stdatomic.h>
+#define _GNU_SOURCE  // 添加这行以支持 clock_gettime
 
 /**
  * 2019-01-01T00:00:00Z
@@ -26,11 +28,11 @@
  */
 #define SNOWFLAKE_EPOC 1696118400000L
 
-#define WORKER_ID_BITS 5
-#define DATACENTER_ID_BITS 5
+#define WORKER_ID_BITS 5L
+#define DATACENTER_ID_BITS 5L
 #define MAX_WORKER_ID (-1L ^ (-1L << WORKER_ID_BITS))
 #define MAX_DATACENTER_ID (-1L ^ (-1L << DATACENTER_ID_BITS))
-#define SEQUENCE_BITS 12
+#define SEQUENCE_BITS 12L
 
 
 #define WORKER_ID_SHIFT SEQUENCE_BITS
@@ -41,6 +43,7 @@
 #define MAX_SEQUENCE 4095
 #define MAX_RETRY_COUNT 3
 #define MAX_BACKWARD_MS 10
+#define INITIAL_SEQUENCE 0L
 #define MAX_SPIN_COUNT 1000
 
 typedef enum {
@@ -59,11 +62,11 @@ typedef struct {
 } spin_lock_t;
 
 typedef struct snowflake {
-    int worker_id;
-    int datacenter_id;
-    atomic_int sequence;
-    atomic_llong last_timestamp;
-    atomic_int backward_sequence;  // 时钟回拨补偿序列
+    int64_t worker_id;
+    int64_t datacenter_id;
+    atomic_int_least64_t sequence;
+    atomic_int_least64_t last_timestamp;
+    atomic_int_least64_t backward_sequence;  // 时钟回拨补偿序列
     bool initialized;
     spin_lock_t lock;
 } snowflake_t;
@@ -92,9 +95,11 @@ static void spin_lock_unlock(spin_lock_t* lock) {
     lock->spin_count = 0;
 }
 
-static int64_t time_gen() {
+static int64_t time_gen(void) {
     struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
+    if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
+        return -1;
+    }
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
@@ -124,9 +129,9 @@ static snowflake_error_t snowflake_init(snowflake_t* context, int worker_id, int
     spin_lock_init(&context->lock);
     context->worker_id = worker_id;
     context->datacenter_id = datacenter_id;
-    atomic_init(&context->sequence, 0);
+    atomic_init(&context->sequence, INITIAL_SEQUENCE);
     atomic_init(&context->last_timestamp, -1);
-    atomic_init(&context->backward_sequence, 0);
+    atomic_init(&context->backward_sequence, INITIAL_SEQUENCE);
     context->initialized = true;
 
     return SNOWFLAKE_SUCCESS;
@@ -206,7 +211,7 @@ static snowflake_error_t snowflake_next_id_with_retry(snowflake_t* context, char
                      (context->worker_id << WORKER_ID_SHIFT) |
                      sequence;
 
-        snprintf(id_str, str_size, "%lld", id);
+        snprintf(id_str, str_size, "%ld", id);
         return SNOWFLAKE_SUCCESS;
     }
 
