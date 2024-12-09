@@ -4,7 +4,6 @@
  * @author KingkongWang
  */
 
-#define _GNU_SOURCE  // 添加这行以支持 clock_gettime
 #include <luajit-2.1/lua.h>
 #include <luajit-2.1/lualib.h>
 #include <luajit-2.1/lauxlib.h>
