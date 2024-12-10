@@ -4,7 +4,7 @@ LUAJIT_INC ?= /usr/local/include/luajit-2.1
 
 # -march=x86-64-v2 -ffast-math -funroll-loops -ftree-vectorize
 CC = gcc
-CFLAGS = -O2 -fPIC -Wall -Wextra -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -I$(LUAJIT_INC)
+CFLAGS = -g -O2 -fPIC -Wall -Wextra -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -I$(LUAJIT_INC)
 LDFLAGS = -L$(LUAJIT_LIB) -lrt -shared -lluajit-5.1
 
 TARGET = snowflake.so
